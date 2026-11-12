@@ -15,13 +15,16 @@ def execute(id):
   run.status="running";db.commit()
   try:
    policy=db.get(ScorePolicy,run.policy_id);data=db.get(CandidateDataset,policy.dataset_id)
-   run.result=analyze(data.rows,policy.threshold,policy.max_gap);run.status="completed"
+   run.result=analyze(data.rows,policy.threshold,policy.max_gap,policy.quota);run.status="completed"
   except Exception as error: run.status="failed";run.error=str(error);traceback.print_exc()
   db.commit()
-# Resume jobs persisted before a worker restart, including a queue handoff interrupted by a crash.
-with Session() as db:
- for id in db.scalars(select(AuditRun.id).where(AuditRun.status.in_(["queued","running"]))): client.lpush("fair-score:queue",id)
-while True:
- heartbeat.touch()
- job=client.brpop("fair-score:queue",timeout=1)
- if job: execute(job[1].decode())
+def main():
+ # Resume jobs persisted before a worker restart, including a queue handoff interrupted by a crash.
+ with Session() as db:
+  for id in db.scalars(select(AuditRun.id).where(AuditRun.status.in_(["queued","running"]))): client.lpush("fair-score:queue",id)
+ while True:
+  heartbeat.touch()
+  job=client.brpop("fair-score:queue",timeout=1)
+  if job: execute(job[1].decode())
+if __name__=="__main__":
+ main()
